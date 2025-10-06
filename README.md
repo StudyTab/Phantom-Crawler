@@ -37,7 +37,7 @@ python3 --version
 
 -----
 
-## Installation (Kali Linux)
+## Installation
 
 ### 1\. Update System (Optional but Recommended)
 

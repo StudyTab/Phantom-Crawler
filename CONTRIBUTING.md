@@ -5,7 +5,7 @@ Thank you for your interest in contributing to PhantomCrawler! We welcome bug re
 ## How to Contribute
 
 1. **Report Issues**:
-   - Open an issue on the [GitHub repository](https://github.com/[YourGitHubUsername]/phantomcrawler/issues).
+   - Open an issue on the [GitHub repository](https://github.com/GihanIT/Phantom-Crawler//issues).
    - Provide a clear description, steps to reproduce, and any relevant logs or screenshots.
 
 2. **Submit Pull Requests**:
