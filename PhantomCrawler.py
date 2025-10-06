@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025 Gihan Harindra (GihanIT)
+# Licensed under the MIT License. See LICENSE file in the project root for full license information.
 """
 PhantomCrawler - Fixed and Enhanced Version
 Lightweight web application reconnaissance and security testing tool.
@@ -37,8 +39,9 @@ import html as html_module
 from urllib.parse import urljoin, urlparse
 from datetime import datetime
 from threading import Thread, Lock
-from queue import Queue
+from queue import Queue, Empty
 from typing import Set, Dict, List, Optional
+import logging
 
 try:
     import requests
@@ -49,6 +52,16 @@ except ImportError as e:
     print(f"Error: Missing required dependency - {e}")
     print("Install with: pip install requests beautifulsoup4 colorama")
     sys.exit(1)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # CONSTANTS
@@ -125,7 +138,6 @@ class RateLimiter:
                 time.sleep(self.delay - time_since_last)
             self.last_request = time.time()
 
-
 class SecurityHeaderAnalyzer:
     """Analyzes HTTP security headers"""
     @staticmethod
@@ -139,7 +151,6 @@ class SecurityHeaderAnalyzer:
                     'impact': info['impact']
                 })
         return findings
-
 
 class JWTAnalyzer:
     """JWT token analysis utilities"""
@@ -155,7 +166,8 @@ class JWTAnalyzer:
             payload = json.loads(base64.urlsafe_b64decode(parts[1] + '=='))
             
             return {'header': header, 'payload': payload}
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to decode JWT: {e}")
             return None
     
     @staticmethod
@@ -179,15 +191,16 @@ def fetch_url(url: str, timeout: int = 12, session: Optional[requests.Session] =
         r = requester.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True, verify=True)
         return r
     except requests.exceptions.SSLError:
-        # Retry without SSL verification for testing purposes
+        logger.warning(f"SSL error for {url}, retrying without verification")
         try:
             r = requester.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True, verify=False)
             return r
-        except Exception:
+        except Exception as e:
+            logger.error(f"Retry failed for {url}: {e}")
             return None
     except Exception as e:
+        logger.error(f"Fetch error for {url}: {e}")
         return None
-
 
 def is_same_domain(base: str, other: str) -> bool:
     """Check if two URLs are from the same domain"""
@@ -195,9 +208,9 @@ def is_same_domain(base: str, other: str) -> bool:
         base_domain = urlparse(base).netloc
         other_domain = urlparse(other).netloc
         return base_domain == other_domain
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error comparing domains {base} and {other}: {e}")
         return False
-
 
 def extract_endpoints(content: str, base_url: str) -> Set[str]:
     """Extract API endpoints from HTML/JS content"""
@@ -223,7 +236,6 @@ def extract_endpoints(content: str, base_url: str) -> Set[str]:
     
     return endpoints
 
-
 def extract_secrets(content: str) -> List[Dict]:
     """Extract potential secrets and credentials"""
     secrets = []
@@ -237,7 +249,6 @@ def extract_secrets(content: str) -> List[Dict]:
                 'value': match[:100]  # Truncate for safety
             })
     return secrets
-
 
 # ============================================================================
 # MAIN CRAWLER CLASS
@@ -279,10 +290,16 @@ class PhantomCrawler:
             }
         }
     
+    def cleanup(self):
+        """Clean up resources"""
+        if hasattr(self, 'session'):
+            logger.info("Closing requests session")
+            self.session.close()
+    
     def crawl(self):
         """Main crawling method with multi-threading"""
-        print(f"{Fore.CYAN}[*] Starting crawl: {self.base}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}[*] Depth: {self.max_depth} | Threads: {self.threads}{Style.RESET_ALL}\n")
+        logger.info(f"Starting crawl: {self.base}")
+        logger.info(f"Depth: {self.max_depth} | Threads: {self.threads}")
         
         # Add initial URL
         self.queue.put((self.base, 0))
@@ -291,31 +308,38 @@ class PhantomCrawler:
         workers = []
         for i in range(self.threads):
             t = Thread(target=self._worker)
-            t.daemon = True
-            t.start()
+            t.start()  # Non-daemon threads
             workers.append(t)
         
-        # Wait for completion
+        # Wait for queue to be empty
         self.queue.join()
+        
+        # Wait for all threads to finish
+        for t in workers:
+            t.join()
         
         # Update statistics
         with self.lock:
             self.findings['statistics']['end_time'] = datetime.now().isoformat()
             self.findings['statistics']['pages_crawled'] = len(self.findings['pages'])
             self.findings['statistics']['scripts_analyzed'] = len(self.findings['scripts'])
+            self.findings['statistics']['forms_found'] = len(self.findings['forms'])
         
-        print(f"\n{Fore.GREEN}[✓] Crawling complete{Style.RESET_ALL}")
+        logger.info("Crawling complete")
     
     def _worker(self):
         """Worker thread for processing URLs"""
         while True:
             try:
-                url, depth = self.queue.get(timeout=1)
-                self._process_url(url, depth)
-            except Exception:
-                break
-            finally:
-                self.queue.task_done()
+                url, depth = self.queue.get(timeout=5)  # Increased timeout
+                try:
+                    self._process_url(url, depth)
+                finally:
+                    self.queue.task_done()  # Only call for valid tasks
+            except Empty:
+                break  # Exit when queue is empty
+            except Exception as e:
+                logger.error(f"Worker error: {e}")
     
     def _process_url(self, url: str, depth: int):
         """Process a single URL"""
@@ -324,158 +348,168 @@ class PhantomCrawler:
                 return
             self.seen.add(url)
         
-        print(f"{Fore.BLUE}[Crawl]{Style.RESET_ALL} {url} (depth {depth})")
+        logger.info(f"Crawling {url} (depth {depth})")
         
         self.rate_limiter.wait()
         r = fetch_url(url, session=self.session)
         
         if not r or r.status_code >= 400:
-            print(f"  {Fore.RED}✗ Failed ({r.status_code if r else 'error'}){Style.RESET_ALL}")
+            logger.error(f"Failed to fetch {url} ({r.status_code if r else 'error'})")
             return
         
-        # Analyze security headers
-        header_findings = SecurityHeaderAnalyzer.analyze(r.headers)
-        if header_findings:
-            with self.lock:
-                self.findings['security_headers'][url] = header_findings
-        
-        # Parse and analyze content
-        content_type = r.headers.get('Content-Type', '')
-        if 'text/html' in content_type or not content_type:
-            self._analyze_page(r.text, url)
+        try:
+            # Analyze security headers
+            header_findings = SecurityHeaderAnalyzer.analyze(r.headers)
+            if header_findings:
+                with self.lock:
+                    self.findings['security_headers'][url] = header_findings
             
-            # Extract and queue new links
-            if depth < self.max_depth:
-                links = self._extract_links(r.text, url)
-                for link in links:
-                    with self.lock:
-                        if link not in self.seen and is_same_domain(self.base, link):
-                            self.queue.put((link, depth + 1))
+            # Parse and analyze content
+            content_type = r.headers.get('Content-Type', '')
+            if 'text/html' in content_type or not content_type:
+                self._analyze_page(r.text, url)
+                
+                # Extract and queue new links
+                if depth < self.max_depth:
+                    links = self._extract_links(r.text, url)
+                    for link in links:
+                        with self.lock:
+                            if link not in self.seen and is_same_domain(self.base, link):
+                                self.queue.put((link, depth + 1))
+        except Exception as e:
+            logger.error(f"Error processing {url}: {e}", exc_info=True)
     
     def _extract_links(self, html: str, base_url: str) -> Set[str]:
         """Extract links from HTML"""
-        soup = BeautifulSoup(html, 'html.parser')
-        links = set()
-        
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            if href.startswith(('mailto:', 'tel:', 'javascript:')):
-                continue
-            full = urljoin(base_url, href)
-            # Remove fragments
-            full = full.split('#')[0]
-            links.add(full)
-        
-        return links
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            links = set()
+            
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if href.startswith(('mailto:', 'tel:', 'javascript:')):
+                    continue
+                full = urljoin(base_url, href)
+                # Remove fragments
+                full = full.split('#')[0]
+                links.add(full)
+            
+            return links
+        except Exception as e:
+            logger.error(f"Error extracting links from {base_url}: {e}")
+            return set()
     
     def _analyze_page(self, html: str, page_url: str):
         """Comprehensive page analysis"""
-        soup = BeautifulSoup(html, 'html.parser')
-        page_info = {
-            'url': page_url,
-            'scripts': [],
-            'forms': [],
-            'risky_js_patterns': {},
-            'endpoints': [],
-            'secrets': [],
-            'jwt_tokens': []
-        }
-        
-        # Extract API endpoints
-        endpoints = extract_endpoints(html, page_url)
-        page_info['endpoints'] = list(endpoints)
-        with self.lock:
-            self.findings['endpoints'].update(endpoints)
-        
-        # Extract secrets
-        secrets = extract_secrets(html)
-        if secrets:
-            page_info['secrets'] = secrets
-            with self.lock:
-                self.findings['secrets'].extend([{**s, 'source': page_url} for s in secrets])
-                print(f"{Fore.RED}[!] Found {len(secrets)} potential secret(s) in {page_url}{Style.RESET_ALL}")
-        
-        # Analyze inline scripts
-        for script in soup.find_all('script'):
-            src = script.get('src')
-            if src:
-                full = urljoin(page_url, src)
-                page_info['scripts'].append(full)
-                if full not in self.findings['scripts']:
-                    self._fetch_and_analyze_script(full)
-            else:
-                inline = script.string or ''
-                if inline.strip():
-                    script_id = f"inline:{hashlib.md5(inline.encode()).hexdigest()[:8]}"
-                    
-                    patterns = self._find_js_patterns(inline)
-                    script_endpoints = extract_endpoints(inline, page_url)
-                    script_secrets = extract_secrets(inline)
-                    
-                    with self.lock:
-                        self.findings['scripts'][script_id] = {
-                            'source': page_url,
-                            'inline': True,
-                            'size': len(inline),
-                            'patterns': patterns,
-                            'endpoints': list(script_endpoints),
-                            'secrets': script_secrets
-                        }
-                        self.findings['endpoints'].update(script_endpoints)
-                    
-                    if patterns:
-                        page_info['risky_js_patterns'].update(patterns)
-                        print(f"{Fore.YELLOW}[!] Risky patterns in inline script: {', '.join(patterns.keys())}{Style.RESET_ALL}")
-        
-        # JWT token detection
-        jwt_pattern = r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
-        jwt_tokens = re.findall(jwt_pattern, html)
-        for token in jwt_tokens:
-            decoded = JWTAnalyzer.decode_jwt(token)
-            if decoded:
-                jwt_findings = JWTAnalyzer.test_weak_secrets(token)
-                with self.lock:
-                    self.findings['jwt_tokens'].append({
-                        'token': token[:50] + '...',
-                        'source': page_url,
-                        'decoded': decoded,
-                        'findings': jwt_findings
-                    })
-                print(f"{Fore.CYAN}[i] JWT token found in {page_url}{Style.RESET_ALL}")
-        
-        # WebSocket detection
-        ws_pattern = r'(wss?://[^\s\'"]+)'
-        websockets = re.findall(ws_pattern, html, re.IGNORECASE)
-        if websockets:
-            with self.lock:
-                self.findings['websockets'].update(websockets)
-            print(f"{Fore.CYAN}[i] WebSocket endpoint(s) found: {websockets}{Style.RESET_ALL}")
-        
-        # Forms
-        for form in soup.find_all('form'):
-            form_info = self._parse_form(form, page_url)
-            page_info['forms'].append(form_info)
-            with self.lock:
-                self.findings['forms'].append(form_info)
-        
-        # GraphQL endpoint detection
-        text_search = html.lower()
-        if '/graphql' in text_search or 'graphql' in text_search:
-            if '/graphql' in text_search:
-                with self.lock:
-                    self.findings['graphql_endpoints'].add(urljoin(page_url, '/graphql'))
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            page_info = {
+                'url': page_url,
+                'scripts': [],
+                'forms': [],
+                'risky_js_patterns': {},
+                'endpoints': [],
+                'secrets': [],
+                'jwt_tokens': []
+            }
             
-            for candidate in re.findall(r"['\"](\S*graphql\S*)['\"]", html, re.IGNORECASE):
-                if candidate.startswith('/') or candidate.startswith('http'):
+            # Extract API endpoints
+            endpoints = extract_endpoints(html, page_url)
+            page_info['endpoints'] = list(endpoints)
+            with self.lock:
+                self.findings['endpoints'].update(endpoints)
+            
+            # Extract secrets
+            secrets = extract_secrets(html)
+            if secrets:
+                page_info['secrets'] = secrets
+                with self.lock:
+                    self.findings['secrets'].extend([{**s, 'source': page_url} for s in secrets])
+                    logger.warning(f"Found {len(secrets)} potential secret(s) in {page_url}")
+            
+            # Analyze inline scripts
+            for script in soup.find_all('script'):
+                src = script.get('src')
+                if src:
+                    full = urljoin(page_url, src)
+                    page_info['scripts'].append(full)
+                    if full not in self.findings['scripts']:
+                        self._fetch_and_analyze_script(full)
+                else:
+                    inline = script.string or ''
+                    if inline.strip():
+                        script_id = f"inline:{hashlib.md5(inline.encode()).hexdigest()[:8]}"
+                        
+                        patterns = self._find_js_patterns(inline)
+                        script_endpoints = extract_endpoints(inline, page_url)
+                        script_secrets = extract_secrets(inline)
+                        
+                        with self.lock:
+                            self.findings['scripts'][script_id] = {
+                                'source': page_url,
+                                'inline': True,
+                                'size': len(inline),
+                                'patterns': patterns,
+                                'endpoints': list(script_endpoints),
+                                'secrets': script_secrets
+                            }
+                            self.findings['endpoints'].update(script_endpoints)
+                        
+                        if patterns:
+                            page_info['risky_js_patterns'].update(patterns)
+                            logger.warning(f"Risky patterns in inline script at {page_url}: {', '.join(patterns.keys())}")
+            
+            # JWT token detection
+            jwt_pattern = r'eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
+            jwt_tokens = re.findall(jwt_pattern, html)
+            for token in jwt_tokens:
+                decoded = JWTAnalyzer.decode_jwt(token)
+                if decoded:
+                    jwt_findings = JWTAnalyzer.test_weak_secrets(token)
                     with self.lock:
-                        self.findings['graphql_endpoints'].add(urljoin(page_url, candidate))
-        
-        with self.lock:
-            self.findings['pages'][page_url] = page_info
+                        self.findings['jwt_tokens'].append({
+                            'token': token[:50] + '...',
+                            'source': page_url,
+                            'decoded': decoded,
+                            'findings': jwt_findings
+                        })
+                    logger.info(f"JWT token found in {page_url}")
+            
+            # WebSocket detection
+            ws_pattern = r'(wss?://[^\s\'"]+)'
+            websockets = re.findall(ws_pattern, html, re.IGNORECASE)
+            if websockets:
+                with self.lock:
+                    self.findings['websockets'].update(websockets)
+                logger.info(f"WebSocket endpoint(s) found: {websockets}")
+            
+            # Forms
+            for form in soup.find_all('form'):
+                form_info = self._parse_form(form, page_url)
+                page_info['forms'].append(form_info)
+                with self.lock:
+                    self.findings['forms'].append(form_info)
+            
+            # GraphQL endpoint detection
+            text_search = html.lower()
+            if '/graphql' in text_search or 'graphql' in text_search:
+                if '/graphql' in text_search:
+                    with self.lock:
+                        self.findings['graphql_endpoints'].add(urljoin(page_url, '/graphql'))
+                
+                for candidate in re.findall(r"['\"](\S*graphql\S*)['\"]", html, re.IGNORECASE):
+                    if candidate.startswith('/') or candidate.startswith('http'):
+                        with self.lock:
+                            self.findings['graphql_endpoints'].add(urljoin(page_url, candidate))
+            
+            with self.lock:
+                self.findings['pages'][page_url] = page_info
+        except Exception as e:
+            logger.error(f"Error analyzing page {page_url}: {e}", exc_info=True)
     
     def _fetch_and_analyze_script(self, script_url: str):
         """Fetch and analyze external JavaScript"""
-        print(f"  {Fore.CYAN}[Script]{Style.RESET_ALL} {script_url}")
+        logger.info(f"Analyzing script: {script_url}")
         
         self.rate_limiter.wait()
         r = fetch_url(script_url, session=self.session)
@@ -483,26 +517,30 @@ class PhantomCrawler:
         if not r or r.status_code >= 400:
             with self.lock:
                 self.findings['scripts'][script_url] = {'error': 'fetch_failed'}
+            logger.error(f"Failed to fetch script {script_url} ({r.status_code if r else 'error'})")
             return
         
-        content = r.text
-        patterns = self._find_js_patterns(content)
-        endpoints = extract_endpoints(content, script_url)
-        secrets = extract_secrets(content)
-        
-        with self.lock:
-            self.findings['scripts'][script_url] = {
-                'size': len(content),
-                'content_snippet': content[:500],
-                'patterns': patterns,
-                'endpoints': list(endpoints),
-                'secrets': secrets
-            }
-            self.findings['endpoints'].update(endpoints)
+        try:
+            content = r.text
+            patterns = self._find_js_patterns(content)
+            endpoints = extract_endpoints(content, script_url)
+            secrets = extract_secrets(content)
             
-            if secrets:
-                self.findings['secrets'].extend([{**s, 'source': script_url} for s in secrets])
-                print(f"{Fore.RED}[!] Found {len(secrets)} secret(s) in {script_url}{Style.RESET_ALL}")
+            with self.lock:
+                self.findings['scripts'][script_url] = {
+                    'size': len(content),
+                    'content_snippet': content[:500],
+                    'patterns': patterns,
+                    'endpoints': list(endpoints),
+                    'secrets': secrets
+                }
+                self.findings['endpoints'].update(endpoints)
+                
+                if secrets:
+                    self.findings['secrets'].extend([{**s, 'source': script_url} for s in secrets])
+                    logger.warning(f"Found {len(secrets)} secret(s) in {script_url}")
+        except Exception as e:
+            logger.error(f"Error analyzing script {script_url}: {e}", exc_info=True)
     
     def _find_js_patterns(self, js_text: str) -> Dict[str, str]:
         """Find risky JavaScript patterns"""
@@ -514,42 +552,46 @@ class PhantomCrawler:
     
     def _parse_form(self, form_tag, page_url: str) -> Dict:
         """Parse form details"""
-        action = form_tag.get('action') or page_url
-        method = (form_tag.get('method') or 'GET').upper()
-        
-        inputs = []
-        csrf_tokens = []
-        
-        for inp in form_tag.find_all(['input', 'textarea', 'select']):
-            name = inp.get('name')
-            typ = inp.get('type') or inp.name
-            value = inp.get('value') or ''
+        try:
+            action = form_tag.get('action') or page_url
+            method = (form_tag.get('method') or 'GET').upper()
             
-            inputs.append({
-                'name': name,
-                'type': typ,
-                'value': value
-            })
+            inputs = []
+            csrf_tokens = []
             
-            # Detect CSRF tokens
-            if name and any(token in name.lower() for token in ['csrf', 'token', '_token', 'authenticity']):
-                csrf_tokens.append(name)
-        
-        return {
-            'page': page_url,
-            'action': urljoin(page_url, action),
-            'method': method,
-            'inputs': inputs,
-            'input_count': len(inputs),
-            'csrf_tokens': csrf_tokens
-        }
+            for inp in form_tag.find_all(['input', 'textarea', 'select']):
+                name = inp.get('name')
+                typ = inp.get('type') or inp.name
+                value = inp.get('value') or ''
+                
+                inputs.append({
+                    'name': name,
+                    'type': typ,
+                    'value': value
+                })
+                
+                # Detect CSRF tokens
+                if name and any(token in name.lower() for token in ['csrf', 'token', '_token', 'authenticity']):
+                    csrf_tokens.append(name)
+            
+            return {
+                'page': page_url,
+                'action': urljoin(page_url, action),
+                'method': method,
+                'inputs': inputs,
+                'input_count': len(inputs),
+                'csrf_tokens': csrf_tokens
+            }
+        except Exception as e:
+            logger.error(f"Error parsing form on {page_url}: {e}")
+            return {'page': page_url, 'action': page_url, 'method': 'GET', 'inputs': [], 'input_count': 0, 'csrf_tokens': []}
     
     def fuzz_forms(self, payloads: Optional[List[str]] = None, delay: float = 0.5):
         """Fuzz forms with XSS payloads"""
         if payloads is None:
             payloads = XSS_PAYLOADS
         
-        print(f"\n{Fore.CYAN}[*] Starting form fuzzing{Style.RESET_ALL}")
+        logger.info("Starting form fuzzing")
         results = []
         
         for form in self.findings['forms']:
@@ -557,7 +599,7 @@ class PhantomCrawler:
             method = form['method']
             inputs = form['inputs']
             
-            print(f"{Fore.BLUE}[Fuzz]{Style.RESET_ALL} {action} ({method})")
+            logger.info(f"Fuzzing form: {action} ({method})")
             
             for payload in payloads:
                 data = {}
@@ -570,7 +612,8 @@ class PhantomCrawler:
                         r = requests.get(action, params=data, headers=HEADERS, timeout=10)
                     else:
                         r = requests.post(action, data=data, headers=HEADERS, timeout=10)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Error fuzzing {action} with payload {payload[:40]}: {e}")
                     r = None
                 
                 reflected = False
@@ -580,7 +623,6 @@ class PhantomCrawler:
                     snippet = r.text[:400]
                     if payload in r.text:
                         reflected = True
-                        # Add to vulnerabilities
                         with self.lock:
                             self.findings['vulnerabilities'].append({
                                 'type': 'XSS',
@@ -601,14 +643,14 @@ class PhantomCrawler:
                     'snippet': snippet
                 })
                 
-                print(f"  {Fore.YELLOW if reflected else Fore.GREEN}{'✓' if reflected else '✗'} {payload[:40]}... → reflected: {reflected}{Style.RESET_ALL}")
+                logger.info(f"Payload {payload[:40]}... → reflected: {reflected}")
                 time.sleep(delay)
         
         return results
     
     def probe_graphql(self):
         """Probe GraphQL endpoints"""
-        print(f"\n{Fore.CYAN}[*] Probing GraphQL endpoints{Style.RESET_ALL}")
+        logger.info("Probing GraphQL endpoints")
         
         results = []
         introspect_query = '{ __schema { types { name } } }'
@@ -616,11 +658,12 @@ class PhantomCrawler:
         headers['Content-Type'] = 'application/json'
         
         for endpoint in list(self.findings['graphql_endpoints']):
-            print(f"{Fore.BLUE}[GraphQL]{Style.RESET_ALL} {endpoint}")
+            logger.info(f"Probing GraphQL: {endpoint}")
             
             try:
                 r = requests.post(endpoint, json={'query': introspect_query}, headers=headers, timeout=10)
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error probing {endpoint}: {e}")
                 r = None
             
             introspection_enabled = False
@@ -633,7 +676,10 @@ class PhantomCrawler:
                         if 'data' in j and '__schema' in str(j):
                             introspection_enabled = True
                         snippet = json.dumps(j, indent=2)[:400]
-                except Exception:
+                    else:
+                        snippet = r.text[:400]
+                except Exception as e:
+                    logger.error(f"Error parsing GraphQL response from {endpoint}: {e}")
                     snippet = r.text[:400]
             
             results.append({
@@ -644,8 +690,8 @@ class PhantomCrawler:
                 'snippet': snippet
             })
             
-            status = f"{Fore.RED}EXPOSED{Style.RESET_ALL}" if introspection_enabled else f"{Fore.GREEN}Protected{Style.RESET_ALL}"
-            print(f"  Introspection: {status}")
+            status = "EXPOSED" if introspection_enabled else "Protected"
+            logger.info(f"Introspection: {status}")
             
             if introspection_enabled:
                 with self.lock:
@@ -663,30 +709,30 @@ class PhantomCrawler:
         """Print scan summary statistics"""
         stats = self.findings['statistics']
         
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}SCAN SUMMARY{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+        logger.info("="*60)
+        logger.info("SCAN SUMMARY")
+        logger.info("="*60)
         
-        print(f"{Fore.GREEN}Pages Crawled:{Style.RESET_ALL} {stats['pages_crawled']}")
-        print(f"{Fore.GREEN}Scripts Analyzed:{Style.RESET_ALL} {stats['scripts_analyzed']}")
-        print(f"{Fore.GREEN}Forms Found:{Style.RESET_ALL} {stats['forms_found']}")
-        print(f"{Fore.GREEN}API Endpoints:{Style.RESET_ALL} {len(self.findings['endpoints'])}")
-        print(f"{Fore.GREEN}GraphQL Endpoints:{Style.RESET_ALL} {len(self.findings['graphql_endpoints'])}")
-        print(f"{Fore.GREEN}WebSocket Endpoints:{Style.RESET_ALL} {len(self.findings['websockets'])}")
+        logger.info(f"Pages Crawled: {stats['pages_crawled']}")
+        logger.info(f"Scripts Analyzed: {stats['scripts_analyzed']}")
+        logger.info(f"Forms Found: {stats['forms_found']}")
+        logger.info(f"API Endpoints: {len(self.findings['endpoints'])}")
+        logger.info(f"GraphQL Endpoints: {len(self.findings['graphql_endpoints'])}")
+        logger.info(f"WebSocket Endpoints: {len(self.findings['websockets'])}")
         
         if self.findings['secrets']:
-            print(f"\n{Fore.RED}Secrets Found:{Style.RESET_ALL} {len(self.findings['secrets'])}")
+            logger.warning(f"Secrets Found: {len(self.findings['secrets'])}")
             secret_types = {}
             for secret in self.findings['secrets']:
                 secret_types[secret['type']] = secret_types.get(secret['type'], 0) + 1
             for stype, count in secret_types.items():
-                print(f"  - {stype}: {count}")
+                logger.warning(f"  - {stype}: {count}")
         
         if self.findings['jwt_tokens']:
-            print(f"\n{Fore.YELLOW}JWT Tokens:{Style.RESET_ALL} {len(self.findings['jwt_tokens'])}")
+            logger.warning(f"JWT Tokens: {len(self.findings['jwt_tokens'])}")
         
         if self.findings['vulnerabilities']:
-            print(f"\n{Fore.RED}Vulnerabilities:{Style.RESET_ALL} {len(self.findings['vulnerabilities'])}")
+            logger.warning(f"Vulnerabilities: {len(self.findings['vulnerabilities'])}")
             vuln_by_severity = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
             for vuln in self.findings['vulnerabilities']:
                 severity = vuln.get('severity', 'MEDIUM')
@@ -694,10 +740,9 @@ class PhantomCrawler:
             
             for severity, count in vuln_by_severity.items():
                 if count > 0:
-                    color = Fore.RED if severity in ['CRITICAL', 'HIGH'] else Fore.YELLOW
-                    print(f"  {color}- {severity}: {count}{Style.RESET_ALL}")
+                    logger.warning(f"  - {severity}: {count}")
         
-        print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+        logger.info("="*60)
     
     def save_report(self, path: str = 'phantom_report.json', html_report: bool = True):
         """Save comprehensive JSON and HTML reports"""
@@ -724,113 +769,119 @@ class PhantomCrawler:
         }
         
         # Save JSON
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        print(f"{Fore.GREEN}[✓] JSON report saved: {path}{Style.RESET_ALL}")
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logger.info(f"JSON report saved: {path}")
+        except Exception as e:
+            logger.error(f"Error saving JSON report to {path}: {e}")
         
         # Generate HTML report
         if html_report:
             html_path = path.replace('.json', '.html')
-            self._generate_html_report(data, html_path)
-            print(f"{Fore.GREEN}[✓] HTML report saved: {html_path}{Style.RESET_ALL}")
+            try:
+                self._generate_html_report(data, html_path)
+                logger.info(f"HTML report saved: {html_path}")
+            except Exception as e:
+                logger.error(f"Error saving HTML report to {html_path}: {e}")
     
     def _generate_html_report(self, data: Dict, path: str):
         """Generate interactive HTML report"""
-        
-        # Build vulnerabilities section
-        vuln_html = ""
-        if data['vulnerabilities']:
-            vuln_html = '<div class="section"><h2>🚨 Vulnerabilities</h2>'
-            for vuln in data['vulnerabilities']:
-                severity = vuln.get('severity', 'MEDIUM').lower()
-                vuln_html += f'''
-            <div class="vuln vuln-{severity}">
-                <span class="badge badge-{severity}">{vuln.get('severity', 'MEDIUM')}</span>
-                <strong>{vuln.get('type', 'Unknown')}</strong>
-                <p><strong>URL:</strong> <code>{html_module.escape(vuln.get('url', 'N/A'))}</code></p>'''
-                
-                if 'payload' in vuln:
-                    vuln_html += f"<p><strong>Payload:</strong> <code>{html_module.escape(vuln['payload'][:200])}</code></p>"
-                if 'description' in vuln:
-                    vuln_html += f"<p>{html_module.escape(vuln['description'])}</p>"
-                if 'impact' in vuln:
-                    vuln_html += f"<p><strong>Impact:</strong> {html_module.escape(vuln['impact'])}</p>"
-                
+        try:
+            # Build vulnerabilities section
+            vuln_html = ""
+            if data['vulnerabilities']:
+                vuln_html = '<div class="section"><h2>🚨 Vulnerabilities</h2>'
+                for vuln in data['vulnerabilities']:
+                    severity = vuln.get('severity', 'MEDIUM').lower()
+                    vuln_html += f'''
+                <div class="vuln vuln-{severity}">
+                    <span class="badge badge-{severity}">{vuln.get('severity', 'MEDIUM')}</span>
+                    <strong>{vuln.get('type', 'Unknown')}</strong>
+                    <p><strong>URL:</strong> <code>{html_module.escape(vuln.get('url', 'N/A'))}</code></p>'''
+                    
+                    if 'payload' in vuln:
+                        vuln_html += f"<p><strong>Payload:</strong> <code>{html_module.escape(vuln['payload'][:200])}</code></p>"
+                    if 'description' in vuln:
+                        vuln_html += f"<p>{html_module.escape(vuln['description'])}</p>"
+                    if 'impact' in vuln:
+                        vuln_html += f"<p><strong>Impact:</strong> {html_module.escape(vuln['impact'])}</p>"
+                    
+                    vuln_html += '</div>'
                 vuln_html += '</div>'
-            vuln_html += '</div>'
-        
-        # Build secrets section
-        secrets_html = ""
-        if data['secrets']:
-            secrets_html = '<div class="section"><h2>🔐 Secrets & Credentials</h2>'
-            for secret in data['secrets']:
-                secrets_html += f'''
-            <div class="secret">
-                <strong>{html_module.escape(secret['type'])}</strong><br>
-                Source: <code>{html_module.escape(secret['source'][:80])}</code><br>
-                Value: <code>{html_module.escape(secret['value'][:50])}{'...' if len(secret['value']) > 50 else ''}</code>
-            </div>'''
-            secrets_html += '</div>'
-        
-        # Build GraphQL section
-        graphql_html = ""
-        if data['graphql_endpoints']:
-            graphql_html = '<div class="section"><h2>GraphQL Endpoints</h2>'
-            for endpoint in data['graphql_endpoints']:
-                graphql_html += f'<div class="endpoint">{html_module.escape(endpoint)}</div>'
-            graphql_html += '</div>'
-        
-        # Build API endpoints section
-        endpoints_html = ""
-        if data['endpoints']:
-            endpoints_html = f'<div class="section"><h2>API Endpoints ({len(data["endpoints"])})</h2>'
-            for endpoint in list(data['endpoints'])[:50]:
-                endpoints_html += f'<div class="endpoint">{html_module.escape(endpoint)}</div>'
-            if len(data['endpoints']) > 50:
-                endpoints_html += f"<p><em>... and {len(data['endpoints']) - 50} more</em></p>"
-            endpoints_html += '</div>'
-        
-        # Build security headers section
-        headers_html = ""
-        if data['security_headers']:
-            headers_html = '''<div class="section">
-            <h2>Security Headers Analysis</h2>
-            <table>
-                <tr><th>URL</th><th>Issue</th><th>Severity</th><th>Impact</th></tr>'''
             
-            for url, findings in data['security_headers'].items():
-                for finding in findings:
-                    headers_html += f'''
-                <tr>
-                    <td><code>{html_module.escape(url[:50])}...</code></td>
-                    <td>{html_module.escape(finding['issue'])}</td>
-                    <td><span class="badge badge-{finding['severity'].lower()}">{finding['severity']}</span></td>
-                    <td>{html_module.escape(finding['impact'])}</td>
-                </tr>'''
-            headers_html += '</table></div>'
-        
-        # Build forms section
-        forms_html = ""
-        if data['forms']:
-            forms_html = f'''<div class="section">
-            <h2>Forms ({len(data['forms'])})</h2>
-            <table>
-                <tr><th>Page</th><th>Action</th><th>Method</th><th>Inputs</th><th>CSRF Tokens</th></tr>'''
+            # Build secrets section
+            secrets_html = ""
+            if data['secrets']:
+                secrets_html = '<div class="section"><h2>🔐 Secrets & Credentials</h2>'
+                for secret in data['secrets']:
+                    secrets_html += f'''
+                <div class="secret">
+                    <strong>{html_module.escape(secret['type'])}</strong><br>
+                    Source: <code>{html_module.escape(secret['source'][:80])}</code><br>
+                    Value: <code>{html_module.escape(secret['value'][:50])}{'...' if len(secret['value']) > 50 else ''}</code>
+                </div>'''
+                secrets_html += '</div>'
             
-            for form in data['forms'][:20]:
-                csrf_info = ', '.join(form.get('csrf_tokens', [])) if form.get('csrf_tokens') else 'None'
-                forms_html += f'''
-                <tr>
-                    <td><code>{html_module.escape(form['page'][:40])}...</code></td>
-                    <td><code>{html_module.escape(form['action'][:40])}...</code></td>
-                    <td>{form['method']}</td>
-                    <td>{form['input_count']}</td>
-                    <td>{html_module.escape(csrf_info)}</td>
-                </tr>'''
-            forms_html += '</table></div>'
-        
-        # Complete HTML document
-        html = f'''<!DOCTYPE html>
+            # Build GraphQL section
+            graphql_html = ""
+            if data['graphql_endpoints']:
+                graphql_html = '<div class="section"><h2>GraphQL Endpoints</h2>'
+                for endpoint in data['graphql_endpoints']:
+                    graphql_html += f'<div class="endpoint">{html_module.escape(endpoint)}</div>'
+                graphql_html += '</div>'
+            
+            # Build API endpoints section
+            endpoints_html = ""
+            if data['endpoints']:
+                endpoints_html = f'<div class="section"><h2>API Endpoints ({len(data["endpoints"])})</h2>'
+                for endpoint in list(data['endpoints'])[:50]:
+                    endpoints_html += f'<div class="endpoint">{html_module.escape(endpoint)}</div>'
+                if len(data['endpoints']) > 50:
+                    endpoints_html += f"<p><em>... and {len(data['endpoints']) - 50} more</em></p>"
+                endpoints_html += '</div>'
+            
+            # Build security headers section
+            headers_html = ""
+            if data['security_headers']:
+                headers_html = '''<div class="section">
+                <h2>Security Headers Analysis</h2>
+                <table>
+                    <tr><th>URL</th><th>Issue</th><th>Severity</th><th>Impact</th></tr>'''
+                
+                for url, findings in data['security_headers'].items():
+                    for finding in findings:
+                        headers_html += f'''
+                    <tr>
+                        <td><code>{html_module.escape(url[:50])}...</code></td>
+                        <td>{html_module.escape(finding['issue'])}</td>
+                        <td><span class="badge badge-{finding['severity'].lower()}">{finding['severity']}</span></td>
+                        <td>{html_module.escape(finding['impact'])}</td>
+                    </tr>'''
+                headers_html += '</table></div>'
+            
+            # Build forms section
+            forms_html = ""
+            if data['forms']:
+                forms_html = f'''<div class="section">
+                <h2>Forms ({len(data['forms'])})</h2>
+                <table>
+                    <tr><th>Page</th><th>Action</th><th>Method</th><th>Inputs</th><th>CSRF Tokens</th></tr>'''
+                
+                for form in data['forms'][:20]:
+                    csrf_info = ', '.join(form.get('csrf_tokens', [])) if form.get('csrf_tokens') else 'None'
+                    forms_html += f'''
+                    <tr>
+                        <td><code>{html_module.escape(form['page'][:40])}...</code></td>
+                        <td><code>{html_module.escape(form['action'][:40])}...</code></td>
+                        <td>{form['method']}</td>
+                        <td>{form['input_count']}</td>
+                        <td>{html_module.escape(csrf_info)}</td>
+                    </tr>'''
+                forms_html += '</table></div>'
+            
+            # Complete HTML document
+            html = f'''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -862,6 +913,7 @@ class PhantomCrawler:
         tr:hover {{ background: #f8f9fa; }}
         .section {{ margin: 30px 0; }}
         code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace; }}
+        .report-footer {{margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; color: #7f8c8d; font-size: 0.9em;}}
     </style>
 </head>
 <body>
@@ -913,13 +965,17 @@ class PhantomCrawler:
         {headers_html}
         {forms_html}
         
+        <footer class="report-footer">
+            <p>PhantomCrawler by Gihan Harindra (GihanIT)</p>
+        </footer>
     </div>
 </body>
 </html>'''
-        
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(html)
-
+            
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(html)
+        except Exception as e:
+            logger.error(f"Error generating HTML report: {e}")
 
 # ============================================================================
 # MAIN EXECUTION
@@ -928,21 +984,20 @@ class PhantomCrawler:
 def print_banner():
     """Print ASCII banner"""
     banner = f"""{Fore.CYAN}
-    ╔═══════════════════════════════════════════════════════╗
-    ║                                                       ║
+    ╔═════════════════════════════════════════════════════╗
+    ║                                                     ║
     ║     ██████╗ ██╗  ██╗ █████╗ ███╗   ██╗████████╗     ║
     ║     ██╔══██╗██║  ██║██╔══██╗████╗  ██║╚══██╔══╝     ║
     ║     ██████╔╝███████║███████║██╔██╗ ██║   ██║        ║
     ║     ██╔═══╝ ██╔══██║██╔══██║██║╚██╗██║   ██║        ║
     ║     ██║     ██║  ██║██║  ██║██║ ╚████║   ██║        ║
     ║     ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝        ║
-    ║                                                       ║
-    ║          CRAWLER - Web Security Scanner              ║
-    ║                    v1.0                               ║
-    ╚═══════════════════════════════════════════════════════╝
+    ║                                                     ║
+    ║         CRAWLER - Web Security Scanner v1.0         ║
+    ║          Copyright (c) 2025 Gihan Harindra          ║
+    ╚═════════════════════════════════════════════════════╝
     {Style.RESET_ALL}"""
     print(banner)
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -978,7 +1033,7 @@ IMPORTANT: Only scan targets you have explicit permission to test.
     
     # Validate URL
     if not args.target.startswith(('http://', 'https://')):
-        print(f"{Fore.RED}[✗] Error: Target must start with http:// or https://{Style.RESET_ALL}")
+        logger.error("Target must start with http:// or https://")
         sys.exit(1)
     
     try:
@@ -998,19 +1053,22 @@ IMPORTANT: Only scan targets you have explicit permission to test.
         if args.graphql:
             crawler.probe_graphql()
         
+        # Clean up resources
+        crawler.cleanup()
+        
         # Print summary
         crawler._print_summary()
         
         # Save reports
         crawler.save_report(args.out, html_report=not args.no_html)
         
-        print(f"\n{Fore.GREEN}[✓] Scan complete! Review reports for findings.{Style.RESET_ALL}")
+        logger.info("Scan complete! Review reports for findings.")
         
     except KeyboardInterrupt:
-        print(f"\n\n{Fore.YELLOW}[!] Scan interrupted by user{Style.RESET_ALL}")
+        logger.warning("Scan interrupted by user")
+        crawler.cleanup()
         sys.exit(0)
     except Exception as e:
-        print(f"\n{Fore.RED}[✗] Fatal error: {e}{Style.RESET_ALL}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Fatal error: {e}", exc_info=True)
+        crawler.cleanup()
         sys.exit(1)
