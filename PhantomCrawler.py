@@ -913,6 +913,7 @@ class PhantomCrawler:
         tr:hover {{ background: #f8f9fa; }}
         .section {{ margin: 30px 0; }}
         code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace; }}
+        .report-footer {{margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; color: #7f8c8d; font-size: 0.9em;}}
     </style>
 </head>
 <body>
@@ -964,6 +965,9 @@ class PhantomCrawler:
         {headers_html}
         {forms_html}
         
+        <footer class="report-footer">
+            <p>PhantomCrawler by Gihan Harindra (GihanIT)</p>
+        </footer>
     </div>
 </body>
 </html>'''
@@ -980,18 +984,18 @@ class PhantomCrawler:
 def print_banner():
     """Print ASCII banner"""
     banner = f"""{Fore.CYAN}
-    ╔═══════════════════════════════════════════════════════╗
-    ║                                                       ║
+    ╔═════════════════════════════════════════════════════╗
+    ║                                                     ║
     ║     ██████╗ ██╗  ██╗ █████╗ ███╗   ██╗████████╗     ║
     ║     ██╔══██╗██║  ██║██╔══██╗████╗  ██║╚══██╔══╝     ║
     ║     ██████╔╝███████║███████║██╔██╗ ██║   ██║        ║
     ║     ██╔═══╝ ██╔══██║██╔══██║██║╚██╗██║   ██║        ║
     ║     ██║     ██║  ██║██║  ██║██║ ╚████║   ██║        ║
     ║     ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝   ╚═╝        ║
-    ║                                                       ║
-    ║          CRAWLER - Web Security Scanner              ║
-    ║                    v1.0                               ║
-    ╚═══════════════════════════════════════════════════════╝
+    ║                                                     ║
+    ║         CRAWLER - Web Security Scanner v1.0         ║
+    ║          Copyright (c) 2025 Gihan Harindra          ║
+    ╚═════════════════════════════════════════════════════╝
     {Style.RESET_ALL}"""
     print(banner)
 
